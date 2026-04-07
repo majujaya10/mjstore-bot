@@ -98,7 +98,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     df.to_excel(FILE, index=False)
 
-    await update.message.reply_text(f"✅ UID {uid} masuk")
+    # HITUNG TOTAL COOKIES (JUMLAH UID MILIK USER)
+    total_cookie = len(df[df['user_id'] == user_id])
+
+    await update.message.reply_text(f"""✓ BERHASIL DISIMPAN!
+ID: {uid}
+Total Cookies: {total_cookie}
+Sisa slot: UNLIMITED
+""")
 
     for admin in ADMIN_IDS:
         await context.bot.send_message(chat_id=admin, text=f"📥 UID: {uid}\nUser: @{username}")
