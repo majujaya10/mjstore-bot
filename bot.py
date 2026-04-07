@@ -9,6 +9,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 import os
 
 TOKEN = os.getenv("TOKEN")
+if not TOKEN:
+    raise ValueError("TOKEN belum diset di Railway Variables!")
 ADMIN_ID = 5312657021
 FILE = "data.xlsx"
 
