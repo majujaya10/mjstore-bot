@@ -5,7 +5,8 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ================= CONFIG =================
-TOKEN = "8655740459:AAHHLBwXecY377lkSdLnNlRZMLC5TOPR1VU"
+import os
+TOKEN = os.getenv("8655740459:AAHHLBwXecY377lkSdLnNlRZMLC5TOPR1VU")
 ADMIN_ID = 5312657021
 FILE = "data.xlsx"
 
