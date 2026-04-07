@@ -1,3 +1,4 @@
+import os
 import re
 import pandas as pd
 from datetime import datetime
@@ -5,9 +6,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ================= CONFIG =================
-import os
-
-TOKEN = os.getenv("TOKEN")
+TOKEN = os.getenv("8655740459:AAHKL6UHZyInBQqEhygiehyogv1v3UnUMso")
 ADMIN_ID = 5312657021
 FILE = "data.xlsx"
 
