@@ -107,32 +107,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if success:
-    waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # HITUNG TOTAL SETORAN USER
-    df = pd.read_excel(FILE)
-    total_user = len(df[df["user_id"] == user_id])
+        # HITUNG TOTAL COOKIE (SEMUA DATA)
+        df = pd.read_excel(FILE)
+        total_cookie = len(df)
 
-    # NOTIF KE USER (SESUAI REQUEST KAMU)
-    await update.message.reply_text(f"""✓ BERHASIL DISIMPAN!
+        # NOTIF USER
+        await update.message.reply_text(f"""✓ BERHASIL DISIMPAN!
 ID: {uid}
-Total Setoranmu: {total_cookie}
+Total Cookies: {total_cookie}
 Sisa slot: UNLIMITED
 """)
 
-    # NOTIF KE ADMIN
-    text = f"""📥 STOR BARU
-
-👤 User: @{update.effective_user.username}
-🆔 ID: {user_id}
-💰 DANA: {user_dana[user_id]}
-🔑 UID: {uid}
-🕒 Waktu: {waktu}
-"""
-    await context.bot.send_message(chat_id=ADMIN_ID, text=text)
-
-    # NOTIF KE ADMIN
-    text = f"""📥 STOR BARU
+        # NOTIF ADMIN
+        text_admin = f"""📥 STOR BARU
 
 👤 User: @{update.effective_user.username}
 🆔 ID: {user_id}
@@ -141,7 +130,8 @@ Sisa slot: UNLIMITED
 🕒 Waktu: {waktu}
 """
 
-    await context.bot.send_message(chat_id=ADMIN_ID, text=text)
+        await context.bot.send_message(chat_id=ADMIN_ID, text=text_admin)
+
     else:
         await update.message.reply_text("⚠️ UID sudah ada (duplikat)")
 
