@@ -85,7 +85,7 @@ async def reset_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     df.to_excel(FILE, index=False)
     await update.message.reply_text("♻️ Excel direset!")
 
-# ================= HANDLE COOKIE =================
+# ================= handle_message =================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -129,7 +129,6 @@ Sisa slot: UNLIMITED
 🔑 UID: {uid}
 🕒 Waktu: {waktu}
 """
-
         await context.bot.send_message(chat_id=ADMIN_ID, text=text_admin)
 
     else:
