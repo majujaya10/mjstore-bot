@@ -6,24 +6,22 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ================= CONFIG =================
-import os
-
 TOKEN = os.getenv("TOKEN")
 if not TOKEN:
-    raise ValueError("TOKEN belum diset di Railway Variables!")
+    raise ValueError("TOKEN belum diset di Railway!")
+
 ADMIN_ID = 5312657021
 FILE = "data.xlsx"
 
-# ================= INIT EXCEL =================
+# ================= INIT FILE =================
 def init_file():
-    try:
-        pd.read_excel(FILE)
-    except:
+    if not os.path.exists(FILE):
         df = pd.DataFrame(columns=["user_id", "username", "dana", "uid", "waktu"])
         df.to_excel(FILE, index=False)
 
 init_file()
 
+# ================= MEMORY =================
 user_dana = {}
 
 # ================= FUNCTION =================
@@ -34,7 +32,7 @@ def extract_uid(text):
 def save_data(user_id, username, dana, uid):
     df = pd.read_excel(FILE)
 
-    if uid in df["uid"].astype(str).values:
+    if "uid" in df.columns and uid in df["uid"].astype(str).values:
         return False
 
     new = {
@@ -50,171 +48,56 @@ def save_data(user_id, username, dana, uid):
     return True
 
 # ================= COMMAND =================
-async def set_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ Hanya admin!")
-        return
-    
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🤖 Bot Aktif!\n\n"
+        "1. Set DANA dulu:\n/setdana 08xxxx\n\n"
+        "2. Kirim cookie (c_user=xxx)\n"
+    )
+
+async def setdana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
     if not context.args:
-        await update.message.reply_text("❌ /setjob open | /setjob close")
+        await update.message.reply_text("❌ Format: /setdana 08xxxx")
         return
-    
-    action = context.args[0].lower()
-    if action == "open":
-        data["job_active"] = True
-        save_data(data)
-        await update.message.reply_text("✅ JOB DIBUKA!")
-    elif action == "close":
-        data["job_active"] = False
-        save_data(data)
-        await update.message.reply_text("⛔ JOB DITUTUP!")
-    else:
-        await update.message.reply_text("❌ Pilihan: open atau close")
 
-async def set_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ Hanya admin!")
-        return
-    
-    if not context.args:
-        await update.message.reply_text("❌ /setrules <teks rules>")
-        return
-    
-    data["rules"] = " ".join(context.args)
-    save_data(data)
-    await update.message.reply_text(f"✅ Rules diupdate!\n\n{data['rules']}")
+    user_dana[user_id] = context.args[0]
+    await update.message.reply_text("✅ DANA berhasil disimpan")
 
-async def set_label(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ Hanya admin!")
-        return
-    
-    if not context.args:
-        await update.message.reply_text("❌ /setlabel <label>")
-        return
-    
-    data["label"] = " ".join(context.args)
-    save_data(data)
-    await update.message.reply_text(f"✅ Label diubah menjadi: {data['label']}")
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    df = pd.read_excel(FILE)
+    total = len(df)
 
-async def set_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ Hanya admin!")
-        return
-    
-    if not context.args:
-        await update.message.reply_text("❌ /setharga <harga>")
-        return
-    
-    try:
-        new_price = int(context.args[0])
-        data["price"] = new_price
-        save_data(data)
-        await update.message.reply_text(f"✅ Harga per akun: Rp {new_price:,}")
-    except:
-        await update.message.reply_text("❌ Masukkan angka!")
+    await update.message.reply_text(f"📊 Total data kamu: {total}")
 
-async def set_slot_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ Hanya admin!")
+async def allstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Hanya admin")
         return
-    
-    if len(context.args) < 2:
-        await update.message.reply_text("❌ /setslot <UID_user> <slot>")
-        return
-    
-    target_uid = context.args[0]
-    try:
-        new_slot = int(context.args[1])
-    except:
-        await update.message.reply_text("❌ Slot harus angka!")
-        return
-    
-    if target_uid not in data["users"]:
-        data["users"][target_uid] = {"dana": "", "total": 0, "accounts": [], "slot": new_slot}
-    else:
-        data["users"][target_uid]["slot"] = new_slot
-    
-    save_data(data)
-    await update.message.reply_text(f"✅ Slot user {target_uid} = {new_slot}")
 
-async def set_global_slot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ Hanya admin!")
-        return
-    
-    if not context.args:
-        await update.message.reply_text("❌ /setglobalslot <slot>")
-        return
-    
-    try:
-        new_slot = int(context.args[0])
-        data["global_slot"] = new_slot
-        save_data(data)
-        await update.message.reply_text(f"✅ Global slot: {new_slot}")
-    except:
-        await update.message.reply_text("❌ Masukkan angka!")
+    df = pd.read_excel(FILE)
+    await update.message.reply_text(f"📊 Total semua data: {len(df)}")
 
-async def total_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ Hanya admin!")
+async def download_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Hanya admin")
         return
-    
-    if not context.args:
-        await update.message.reply_text("❌ /total <UID>")
-        return
-    
-    target = context.args[0]
-    if target in data["users"]:
-        u = data["users"][target]
-        await update.message.reply_text(f"UID: {target}\nDANA: {u['dana']}\nTotal: {u['total']} akun\nNominal: Rp {u['total'] * data.get('price', DEFAULT_PRICE):,}")
-    else:
-        await update.message.reply_text("User tidak ditemukan")
 
-async def payout(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ Hanya admin!")
-        return
-    
-    if len(context.args) < 2:
-        await update.message.reply_text("❌ /bayar <UID> <jumlah>")
-        return
-    
-    target = context.args[0]
-    try:
-        jumlah = int(context.args[1])
-    except:
-        await update.message.reply_text("❌ Jumlah harus angka!")
-        return
-    
-    if target not in data["users"]:
-        await update.message.reply_text("User tidak ditemukan")
-        return
-    
-    if data["users"][target]["total"] < jumlah:
-        await update.message.reply_text(f"User hanya punya {data['users'][target]['total']} akun")
-        return
-    
-    data["users"][target]["total"] -= jumlah
-    data["users"][target]["accounts"] = data["users"][target]["accounts"][jumlah:]
-    save_data(data)
-    
-    nominal = jumlah * data.get('price', DEFAULT_PRICE)
-    await update.message.reply_text(f"✅ Payout Rp {nominal:,}\nSisa: {data['users'][target]['total']} akun")
+    await update.message.reply_document(open(FILE, "rb"))
 
-async def all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ Hanya admin!")
+async def reset_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Hanya admin")
         return
-    
-    text = "📋 SEMUA USER:\n\n"
-    for uid, info in data["users"].items():
-        if info["total"] > 0:
-            text += f"UID: {uid}\nDANA: {info['dana']}\nTotal: {info['total']} akun\n\n"
-    
-    await update.message.reply_text(text if len(text) < 4000 else "Terlalu banyak data")
 
-# ================= HANDLE COOKIE =================
+    df = pd.DataFrame(columns=["user_id", "username", "dana", "uid", "waktu"])
+    df.to_excel(FILE, index=False)
+
+    await update.message.reply_text("✅ Data berhasil direset")
+
+# ================= HANDLE MESSAGE =================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -226,11 +109,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     uid = extract_uid(text)
 
-    # jika bukan cookie
     if not uid:
         return
 
-    # simpan data
     success = save_data(
         user_id,
         update.effective_user.username,
@@ -244,24 +125,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         df = pd.read_excel(FILE)
         total_cookie = len(df)
 
-        # NOTIF USER
-        await update.message.reply_text(f"""✓ BERHASIL DISIMPAN!
+        # USER
+        await update.message.reply_text(
+            f"""✅ BERHASIL
 ID: {uid}
-Total Cookies: {total_cookie}
-Sisa slot: UNLIMITED
-""")
-
-        # NOTIF ADMIN
-        text_admin = f"""📥 STOR BARU
-
-👤 User: @{update.effective_user.username}
-🆔 ID: {user_id}
-💰 DANA: {user_dana[user_id]}
-🔑 UID: {uid}
-🕒 Waktu: {waktu}
+Total: {total_cookie}
 """
+        )
 
-        await context.bot.send_message(chat_id=ADMIN_ID, text=text_admin)
+        # ADMIN
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"""📥 STOR BARU
+
+User: @{update.effective_user.username}
+ID: {user_id}
+DANA: {user_dana[user_id]}
+UID: {uid}
+Waktu: {waktu}
+"""
+        )
 
     else:
         await update.message.reply_text("⚠️ UID sudah ada (duplikat)")
@@ -275,7 +158,8 @@ app.add_handler(CommandHandler("stats", stats))
 app.add_handler(CommandHandler("allstats", allstats))
 app.add_handler(CommandHandler("downloadexcel", download_excel))
 app.add_handler(CommandHandler("resetexcel", reset_excel))
+
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-print("BOT RUNNING...")
+print("✅ BOT RUNNING...")
 app.run_polling()
