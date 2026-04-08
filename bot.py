@@ -1,165 +1,226 @@
 import os
 import re
-import pandas as pd
+import json
+import asyncio
+import requests
 from datetime import datetime
+from typing import List, Dict
+
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
 if not TOKEN:
-    raise ValueError("TOKEN belum diset di Railway!")
+    raise ValueError("TOKEN belum diset!")
 
-ADMIN_ID = 5312657021
-FILE = "data.xlsx"
+OWNER_ID = 5312657021
+DATA_FILE = "data.json"
 
-# ================= INIT FILE =================
-def init_file():
-    if not os.path.exists(FILE):
-        df = pd.DataFrame(columns=["user_id", "username", "dana", "uid", "waktu"])
-        df.to_excel(FILE, index=False)
+DEFAULT_RULES = "Tidak boleh spam, akun harus valid"
+DEFAULT_PRICE = 300
+DEFAULT_LABEL = "FB"
+DEFAULT_SLOT = 50
 
-init_file()
+MAX_RETRIES = 2
+REQUEST_TIMEOUT = 10
 
-# ================= MEMORY =================
-user_dana = {}
-
-# ================= FUNCTION =================
-def extract_uid(text):
-    match = re.search(r'c_user=(\d+)', text)
-    return match.group(1) if match else None
-
-def save_data(user_id, username, dana, uid):
-    df = pd.read_excel(FILE)
-
-    if "uid" in df.columns and uid in df["uid"].astype(str).values:
-        return False
-
-    new = {
-        "user_id": user_id,
-        "username": username or "-",
-        "dana": dana,
-        "uid": uid,
-        "waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+# ================= DATA =================
+def get_default_data():
+    return {
+        "users": {},
+        "job_active": True,
+        "rules": DEFAULT_RULES,
+        "price": DEFAULT_PRICE,
+        "label": DEFAULT_LABEL,
+        "global_slot": DEFAULT_SLOT
     }
 
-    df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
-    df.to_excel(FILE, index=False)
-    return True
+def load_data():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, 'r') as f:
+                data = json.load(f)
+
+                data.setdefault("users", {})
+                data.setdefault("rules", DEFAULT_RULES)
+                data.setdefault("price", DEFAULT_PRICE)
+                data.setdefault("label", DEFAULT_LABEL)
+                data.setdefault("global_slot", DEFAULT_SLOT)
+                data.setdefault("job_active", True)
+
+                for uid, u in data["users"].items():
+                    u.setdefault("slot", data["global_slot"])
+                    u.setdefault("accounts", [])
+                    u.setdefault("total", len(u["accounts"]))
+                    u.setdefault("dana", "")
+
+                return data
+        except:
+            return get_default_data()
+    return get_default_data()
+
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+data = load_data()
+
+# ================= FB CHECK =================
+def check_facebook_live(uid: str) -> Dict:
+    try:
+        res = requests.get(
+            f"https://www.facebook.com/{uid}",
+            timeout=REQUEST_TIMEOUT,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+        text = res.text.lower()
+
+        if "checkpoint" in text:
+            return {"status": "⚠️ CHECKPOINT", "emoji": "⚠️", "live": False}
+        if "not found" in text or res.status_code == 404:
+            return {"status": "❌ NOT FOUND", "emoji": "❌", "live": False}
+
+        return {"status": "✅ LIVE", "emoji": "✅", "live": True}
+    except:
+        return {"status": "⚠️ ERROR", "emoji": "⚠️", "live": False}
+
+# ================= SLOT =================
+def get_user_slot(uid):
+    return data["users"].get(uid, {}).get("slot", data["global_slot"])
+
+def get_remaining_slot(uid):
+    used = len(data["users"].get(uid, {}).get("accounts", []))
+    return max(0, get_user_slot(uid) - used)
 
 # ================= COMMAND =================
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🤖 Bot Aktif!\n\n"
-        "1. Set DANA dulu:\n/setdana 08xxxx\n\n"
-        "2. Kirim cookie (c_user=xxx)\n"
-    )
+    uid = str(update.effective_user.id)
 
-async def setdana(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    if uid not in data["users"]:
+        data["users"][uid] = {"dana": "", "total": 0, "accounts": [], "slot": data["global_slot"]}
+        save_data(data)
+
+    u = data["users"][uid]
+
+    text = f"""👋 Halo!
+
+📊 Akun kamu:
+Total: {u['total']}
+Slot: {len(u['accounts'])}/{get_user_slot(uid)}
+Sisa: {get_remaining_slot(uid)}
+
+💰 Harga: Rp {data['price']:,}
+
+Menu:
+/setdana 08xxxx
+/ceklive
+/live
+"""
+
+    await update.message.reply_text(text)
+
+async def set_dana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
 
     if not context.args:
-        await update.message.reply_text("❌ Format: /setdana 08xxxx")
+        return await update.message.reply_text("Format: /setdana 08xxx")
+
+    data["users"][uid]["dana"] = context.args[0]
+    save_data(data)
+
+    await update.message.reply_text("✅ DANA tersimpan")
+
+async def ceklive(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Kirim UID (1 baris 1)")
+    context.user_data["cek"] = True
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
+    text = update.message.text.strip()
+
+    # CEK MODE
+    if context.user_data.get("cek"):
+        context.user_data["cek"] = False
+        uids = text.splitlines()
+
+        hasil = ""
+        for u in uids:
+            r = check_facebook_live(u)
+            hasil += f"{r['emoji']} {u}: {r['status']}\n"
+
+        return await update.message.reply_text(hasil)
+
+    # SETOR
+    if not data["job_active"]:
+        return await update.message.reply_text("⛔ Job tutup")
+
+    if not data["users"][uid]["dana"]:
+        return await update.message.reply_text("Set /setdana dulu")
+
+    uids = [x for x in text.splitlines() if x.isdigit()]
+
+    if not uids:
         return
 
-    user_dana[user_id] = context.args[0]
-    await update.message.reply_text("✅ DANA berhasil disimpan")
+    if len(uids) > get_remaining_slot(uid):
+        return await update.message.reply_text("Slot tidak cukup")
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    df = pd.read_excel(FILE)
-    total = len(df)
+    hasil = ""
+    for u in uids:
+        r = check_facebook_live(u)
 
-    await update.message.reply_text(f"📊 Total data kamu: {total}")
+        data["users"][uid]["accounts"].append({
+            "uid": u,
+            "status": r["status"],
+            "time": datetime.now().isoformat()
+        })
+        data["users"][uid]["total"] += 1
 
-async def allstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Hanya admin")
+        hasil += f"{r['emoji']} {u}: {r['status']}\n"
+
+        await asyncio.sleep(0.2)
+
+    save_data(data)
+
+    await update.message.reply_text(hasil)
+
+async def live(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
+
+    user = data["users"][uid]
+    if not user["accounts"]:
+        return await update.message.reply_text("Kosong")
+
+    text = ""
+    for i, a in enumerate(user["accounts"], 1):
+        text += f"{i}. {a['uid']} - {a['status']}\n"
+
+    await update.message.reply_text(text[:4000])
+
+# ================= ADMIN =================
+def is_admin(update):
+    return update.effective_user.id == OWNER_ID
+
+async def setjob(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update):
         return
 
-    df = pd.read_excel(FILE)
-    await update.message.reply_text(f"📊 Total semua data: {len(df)}")
+    data["job_active"] = context.args[0] == "open"
+    save_data(data)
 
-async def download_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Hanya admin")
-        return
-
-    await update.message.reply_document(open(FILE, "rb"))
-
-async def reset_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Hanya admin")
-        return
-
-    df = pd.DataFrame(columns=["user_id", "username", "dana", "uid", "waktu"])
-    df.to_excel(FILE, index=False)
-
-    await update.message.reply_text("✅ Data berhasil direset")
-
-# ================= HANDLE MESSAGE =================
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    # cek dana
-    if user_id not in user_dana:
-        await update.message.reply_text("⚠️ Set DANA dulu: /setdana 08xxxx")
-        return
-
-    text = update.message.text
-    uid = extract_uid(text)
-
-    if not uid:
-        return
-
-    success = save_data(
-        user_id,
-        update.effective_user.username,
-        user_dana[user_id],
-        uid
-    )
-
-    if success:
-        waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        df = pd.read_excel(FILE)
-        total_cookie = len(df)
-
-        # USER
-        await update.message.reply_text(
-            f"""✅ BERHASIL
-ID: {uid}
-Total: {total_cookie}
-"""
-        )
-
-        # ADMIN
-        await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=f"""📥 STOR BARU
-
-User: @{update.effective_user.username}
-ID: {user_id}
-DANA: {user_dana[user_id]}
-UID: {uid}
-Waktu: {waktu}
-"""
-        )
-
-    else:
-        await update.message.reply_text("⚠️ UID sudah ada (duplikat)")
+    await update.message.reply_text("Updated")
 
 # ================= RUN =================
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("setdana", setdana))
-app.add_handler(CommandHandler("stats", stats))
-app.add_handler(CommandHandler("allstats", allstats))
-app.add_handler(CommandHandler("downloadexcel", download_excel))
-app.add_handler(CommandHandler("resetexcel", reset_excel))
+app.add_handler(CommandHandler("setdana", set_dana))
+app.add_handler(CommandHandler("ceklive", ceklive))
+app.add_handler(CommandHandler("live", live))
+app.add_handler(CommandHandler("setjob", setjob))
 
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-print("✅ BOT RUNNING...")
+print("BOT RUNNING...")
 app.run_polling()
