@@ -6,6 +6,7 @@ from datetime import datetime
 
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from typing import Dict, List
 
 # ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
