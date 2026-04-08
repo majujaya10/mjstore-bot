@@ -12,7 +12,7 @@ TOKEN = os.getenv("TOKEN")
 if not TOKEN:
     raise ValueError("TOKEN belum diset di Railway Variables!")
 ADMIN_ID = 5312657021
-FILE = "data.json"
+FILE = "data.xlsx"
 
 # ================= INIT EXCEL =================
 def init_file():
