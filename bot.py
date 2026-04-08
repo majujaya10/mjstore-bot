@@ -563,38 +563,18 @@ async def all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(text if len(text) < 4000 else "Terlalu banyak data")
 
-# ============ MAIN ============
-def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    
-    # User commands
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("setdana", set_dana))
-    app.add_handler(CommandHandler("ceklive", cek_live_command))
-    app.add_handler(CommandHandler("live", live_command))
-    
-    app.add_handler(CommandHandler("rules", rules_command))
-    app.add_handler(CommandHandler("setjob", set_job))
-    app.add_handler(CommandHandler("setrules", set_rules))
-    app.add_handler(CommandHandler("setlabel", set_label))
-    app.add_handler(CommandHandler("setharga", set_price))
-    app.add_handler(CommandHandler("setslot", set_slot_user))
-    app.add_handler(CommandHandler("setglobalslot", set_global_slot))
-    app.add_handler(CommandHandler("total", total_user))
-    app.add_handler(CommandHandler("bayar", payout))
-    app.add_handler(CommandHandler("semuauser", all_users))
-    
-    # Handle text
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_account))
-    
-    print(f"✅ Bot started!")
-    print(f"📱 Owner ID: {OWNER_ID}")
-    print(f"🌍 Global slot: {data.get('global_slot', DEFAULT_SLOT)}")
-    print(f"💰 Harga: Rp {data.get('price', DEFAULT_PRICE):,}")
-    
-    app.run_polling()
+# ================= RUN =================
+updater = Updater(TOKEN, use_context=True)
+dp = updater.dispatcher
 
-if __name__ == "__main__":
-    main()
+dp.add_handler(CommandHandler("start", start))
+dp.add_handler(CommandHandler("setdana", set_dana))
+dp.add_handler(CommandHandler("ceklive", ceklive))
+dp.add_handler(CommandHandler("live", live))
+dp.add_handler(CommandHandler("setjob", setjob))
 
+dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_text))
+
+print("BOT RUNNING...")
+updater.start_polling()
 updater.idle()
