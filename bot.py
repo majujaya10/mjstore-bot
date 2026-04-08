@@ -1,19 +1,14 @@
 import os
-import re
 import json
-import asyncio
+import time
 import requests
 from datetime import datetime
-from typing import List, Dict
 
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
 # ================= CONFIG =================
 TOKEN = os.getenv("TOKEN")
-if not TOKEN:
-    raise ValueError("TOKEN belum diset!")
-
 OWNER_ID = 5312657021
 DATA_FILE = "data.json"
 
@@ -21,9 +16,6 @@ DEFAULT_RULES = "Tidak boleh spam, akun harus valid"
 DEFAULT_PRICE = 300
 DEFAULT_LABEL = "FB"
 DEFAULT_SLOT = 50
-
-MAX_RETRIES = 2
-REQUEST_TIMEOUT = 10
 
 # ================= DATA =================
 def get_default_data():
@@ -39,7 +31,7 @@ def get_default_data():
 def load_data():
     if os.path.exists(DATA_FILE):
         try:
-            with open(DATA_FILE, 'r') as f:
+            with open(DATA_FILE, "r") as f:
                 data = json.load(f)
 
                 data.setdefault("users", {})
@@ -67,11 +59,11 @@ def save_data(data):
 data = load_data()
 
 # ================= FB CHECK =================
-def check_facebook_live(uid: str) -> Dict:
+def check_facebook_live(uid):
     try:
         res = requests.get(
             f"https://www.facebook.com/{uid}",
-            timeout=REQUEST_TIMEOUT,
+            timeout=10,
             headers={"User-Agent": "Mozilla/5.0"}
         )
         text = res.text.lower()
@@ -94,7 +86,7 @@ def get_remaining_slot(uid):
     return max(0, get_user_slot(uid) - used)
 
 # ================= COMMAND =================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def start(update: Update, context: CallbackContext):
     uid = str(update.effective_user.id)
 
     if uid not in data["users"]:
@@ -117,29 +109,28 @@ Menu:
 /ceklive
 /live
 """
+    update.message.reply_text(text)
 
-    await update.message.reply_text(text)
-
-async def set_dana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def set_dana(update: Update, context: CallbackContext):
     uid = str(update.effective_user.id)
 
     if not context.args:
-        return await update.message.reply_text("Format: /setdana 08xxx")
+        return update.message.reply_text("Format: /setdana 08xxx")
 
     data["users"][uid]["dana"] = context.args[0]
     save_data(data)
 
-    await update.message.reply_text("✅ DANA tersimpan")
+    update.message.reply_text("✅ DANA tersimpan")
 
-async def ceklive(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Kirim UID (1 baris 1)")
+def ceklive(update: Update, context: CallbackContext):
+    update.message.reply_text("Kirim UID (1 baris 1)")
     context.user_data["cek"] = True
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def handle_text(update: Update, context: CallbackContext):
     uid = str(update.effective_user.id)
     text = update.message.text.strip()
 
-    # CEK MODE
+    # MODE CEK
     if context.user_data.get("cek"):
         context.user_data["cek"] = False
         uids = text.splitlines()
@@ -149,14 +140,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             r = check_facebook_live(u)
             hasil += f"{r['emoji']} {u}: {r['status']}\n"
 
-        return await update.message.reply_text(hasil)
+        return update.message.reply_text(hasil)
 
     # SETOR
     if not data["job_active"]:
-        return await update.message.reply_text("⛔ Job tutup")
+        return update.message.reply_text("⛔ Job tutup")
 
     if not data["users"][uid]["dana"]:
-        return await update.message.reply_text("Set /setdana dulu")
+        return update.message.reply_text("Set /setdana dulu")
 
     uids = [x for x in text.splitlines() if x.isdigit()]
 
@@ -164,7 +155,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if len(uids) > get_remaining_slot(uid):
-        return await update.message.reply_text("Slot tidak cukup")
+        return update.message.reply_text("Slot tidak cukup")
 
     hasil = ""
     for u in uids:
@@ -179,48 +170,49 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         hasil += f"{r['emoji']} {u}: {r['status']}\n"
 
-        await asyncio.sleep(0.2)
+        time.sleep(0.2)
 
     save_data(data)
+    update.message.reply_text(hasil)
 
-    await update.message.reply_text(hasil)
-
-async def live(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def live(update: Update, context: CallbackContext):
     uid = str(update.effective_user.id)
 
     user = data["users"][uid]
     if not user["accounts"]:
-        return await update.message.reply_text("Kosong")
+        return update.message.reply_text("Kosong")
 
     text = ""
     for i, a in enumerate(user["accounts"], 1):
         text += f"{i}. {a['uid']} - {a['status']}\n"
 
-    await update.message.reply_text(text[:4000])
+    update.message.reply_text(text[:4000])
 
 # ================= ADMIN =================
-def is_admin(update):
-    return update.effective_user.id == OWNER_ID
-
-async def setjob(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update):
+def setjob(update: Update, context: CallbackContext):
+    if update.effective_user.id != OWNER_ID:
         return
+
+    if not context.args:
+        return update.message.reply_text("/setjob open/close")
 
     data["job_active"] = context.args[0] == "open"
     save_data(data)
 
-    await update.message.reply_text("Updated")
+    update.message.reply_text("Updated")
 
 # ================= RUN =================
-app = ApplicationBuilder().token(TOKEN).build()
+updater = Updater(TOKEN, use_context=True)
+dp = updater.dispatcher
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("setdana", set_dana))
-app.add_handler(CommandHandler("ceklive", ceklive))
-app.add_handler(CommandHandler("live", live))
-app.add_handler(CommandHandler("setjob", setjob))
+dp.add_handler(CommandHandler("start", start))
+dp.add_handler(CommandHandler("setdana", set_dana))
+dp.add_handler(CommandHandler("ceklive", ceklive))
+dp.add_handler(CommandHandler("live", live))
+dp.add_handler(CommandHandler("setjob", setjob))
 
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_text))
 
 print("BOT RUNNING...")
-app.run_polling()
+updater.start_polling()
+updater.idle()
